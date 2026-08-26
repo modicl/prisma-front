@@ -1,8 +1,12 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
+import { configureCognito } from './config/cognito';
 import App from './App.jsx';
 import reportWebVitals from './reportWebVitals';
+
+// Debe correr antes de cualquier llamada a Amplify Auth.
+configureCognito();
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(

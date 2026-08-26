@@ -6,6 +6,7 @@
 
 import axios from 'axios';
 import storageUtils from '../utils/localStorage';
+import { getAuthToken } from './cognitoAuth';
 import { handleAuthFailure } from './authSession';
 
 const api = axios.create({
@@ -17,8 +18,8 @@ const api = axios.create({
 
 // Interceptor para agregar token en cada request
 api.interceptors.request.use(
-  (config) => {
-    const token = storageUtils.getToken();
+  async (config) => {
+    const token = await getAuthToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }

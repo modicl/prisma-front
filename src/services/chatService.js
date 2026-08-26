@@ -6,6 +6,7 @@
 import axios from 'axios';
 import { CHAT_ENDPOINTS } from '../constants/api';
 import storageUtils from '../utils/localStorage';
+import { getAuthToken } from './cognitoAuth';
 import { handleAuthFailure } from './authSession';
 
 const chatApi = axios.create({
@@ -14,8 +15,8 @@ const chatApi = axios.create({
 
 // Inyectar el JWT de Supabase en cada request al backend de agentes
 chatApi.interceptors.request.use(
-  (config) => {
-    const token = storageUtils.getToken();
+  async (config) => {
+    const token = await getAuthToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }

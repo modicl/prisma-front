@@ -1,6 +1,16 @@
 // jest-dom adds custom matchers for asserting on DOM nodes.
 // learn more: https://github.com/testing-library/jest-dom
 import '@testing-library/jest-dom';
+import { vi } from 'vitest';
+
+// Amplify Auth se stubea globalmente: sin esto, los tests dependerían de si
+// el .env local tiene las VITE_COGNITO_* definidas. Por defecto "no hay
+// sesión de Cognito", que es el escenario del login legacy.
+vi.mock('aws-amplify/auth', () => ({
+  fetchAuthSession: vi.fn(async () => ({ tokens: undefined })),
+  signInWithRedirect: vi.fn(async () => undefined),
+  signOut: vi.fn(async () => undefined),
+}));
 
 // Polyfill de localStorage para el entorno de pruebas. La implementación de
 // jsdom en esta versión no expone métodos utilizables de forma consistente

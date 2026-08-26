@@ -98,7 +98,7 @@ describe('adminPanelService', () => {
     it('agrega token y timestamp anti-caché en GET con params', async () => {
       const reqInterceptor = await getRequestInterceptor();
       storageUtils.getToken.mockReturnValue('tok');
-      const config = reqInterceptor({ method: 'get', params: { a: 1 }, headers: {} });
+      const config = await reqInterceptor({ method: 'get', params: { a: 1 }, headers: {} });
       expect(config.headers.Authorization).toBe('Bearer tok');
       expect(config.params._t).toBeTypeOf('number');
       expect(config.params.a).toBe(1);
@@ -107,7 +107,7 @@ describe('adminPanelService', () => {
     it('crea params con timestamp en GET sin params', async () => {
       const reqInterceptor = await getRequestInterceptor();
       storageUtils.getToken.mockReturnValue(null);
-      const config = reqInterceptor({ method: 'get', headers: {} });
+      const config = await reqInterceptor({ method: 'get', headers: {} });
       expect(config.params._t).toBeTypeOf('number');
       expect(config.headers.Authorization).toBeUndefined();
     });

@@ -57,15 +57,15 @@ describe('api (instancia axios)', () => {
   });
 
   describe('interceptor de request', () => {
-    it('agrega el header Authorization cuando hay token', () => {
+    it('agrega el header Authorization cuando hay token', async () => {
       storageUtils.getToken.mockReturnValue('abc123');
-      const config = mockHandlers.reqF({ headers: {} });
+      const config = await mockHandlers.reqF({ headers: {} });
       expect(config.headers.Authorization).toBe('Bearer abc123');
     });
 
-    it('no agrega Authorization cuando no hay token', () => {
+    it('no agrega Authorization cuando no hay token', async () => {
       storageUtils.getToken.mockReturnValue(null);
-      const config = mockHandlers.reqF({ headers: {} });
+      const config = await mockHandlers.reqF({ headers: {} });
       expect(config.headers.Authorization).toBeUndefined();
     });
 

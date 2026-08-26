@@ -36,7 +36,7 @@ describe('AuthContext', () => {
       expect(screen.getByTestId('child')).toBeInTheDocument();
     });
 
-    it('debe cargar usuario y tokens de localStorage al montar', () => {
+    it('debe cargar usuario y tokens de localStorage al montar', async () => {
       const mockUser = { id: '1', email: 'test@example.com', nombre: 'Test User', role: 'TEACHER' };
       storageUtils.getUser.mockReturnValueOnce(mockUser);
       storageUtils.getToken.mockReturnValueOnce('token_123');
@@ -59,7 +59,9 @@ describe('AuthContext', () => {
         </AuthProvider>
       );
 
-      expect(screen.getByTestId('is-loading')).toHaveTextContent('false');
+      await waitFor(() => {
+        expect(screen.getByTestId('is-loading')).toHaveTextContent('false');
+      });
       expect(screen.getByTestId('is-authenticated')).toHaveTextContent('true');
       expect(screen.getByTestId('user-email')).toHaveTextContent('test@example.com');
       expect(screen.getByTestId('is-admin')).toHaveTextContent('false');
@@ -212,6 +214,12 @@ describe('AuthContext', () => {
           <TestComponent />
         </AuthProvider>
       );
+
+      // updateUser persiste en localStorage solo para sesiones legacy, así que
+      // hay que esperar a que la hidratación asíncrona defina el authSource.
+      await waitFor(() => {
+        expect(screen.getByTestId('user-name')).toHaveTextContent('Test');
+      });
 
       const updateButton = screen.getByRole('button', { name: /update/i });
       updateButton.click();

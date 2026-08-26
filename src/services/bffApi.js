@@ -1,5 +1,6 @@
 import axios from 'axios';
 import storageUtils from '../utils/localStorage';
+import { getAuthToken } from './cognitoAuth';
 import { handleAuthFailure } from './authSession';
 
 const BFF_BASE_URL = import.meta.env.VITE_BFF_URL ?? 'http://localhost:3010';
@@ -12,8 +13,8 @@ const createBffApi = () => {
     },
   });
 
-  bffApi.interceptors?.request?.use?.((config) => {
-    const token = storageUtils.getToken();
+  bffApi.interceptors?.request?.use?.(async (config) => {
+    const token = await getAuthToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }

@@ -257,11 +257,11 @@ describe('bffApi', () => {
       const reqInterceptor = mockInstance.interceptors.request.use.mock.calls[0][0];
 
       storageUtils.getToken.mockReturnValue('tok');
-      const config = reqInterceptor({ headers: {} });
+      const config = await reqInterceptor({ headers: {} });
       expect(config.headers.Authorization).toBe('Bearer tok');
 
       storageUtils.getToken.mockReturnValue(null);
-      const config2 = reqInterceptor({ headers: {} });
+      const config2 = await reqInterceptor({ headers: {} });
       expect(config2.headers.Authorization).toBeUndefined();
     });
 

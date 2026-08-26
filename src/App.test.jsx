@@ -9,8 +9,10 @@ import { render, screen } from '@testing-library/react';
 import App from './App';
 
 describe('App', () => {
-  it('renderiza la app y muestra el login cuando no hay sesión', () => {
+  it('renderiza la app y muestra el login cuando no hay sesión', async () => {
     render(<App />);
-    expect(screen.getByText('Bienvenido de vuelta')).toBeInTheDocument();
+    // La hidratación de sesión es asíncrona (consulta primero a Cognito),
+    // así que el login aparece después del estado de carga.
+    expect(await screen.findByText('Bienvenido de vuelta')).toBeInTheDocument();
   });
 });

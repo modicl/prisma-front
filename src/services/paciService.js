@@ -5,6 +5,7 @@
 
 import axios from 'axios';
 import storageUtils from '../utils/localStorage';
+import { getAuthToken } from './cognitoAuth';
 
 const PACI_BASE_URL = import.meta.env.VITE_BFF_URL ?? 'http://localhost:3010';
 
@@ -13,8 +14,8 @@ const paciApi = axios.create({
 });
 
 // Interceptor para agregar token Bearer
-paciApi.interceptors.request.use((config) => {
-  const token = storageUtils.getToken();
+paciApi.interceptors.request.use(async (config) => {
+  const token = await getAuthToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }

@@ -24,6 +24,7 @@ import AdminPanelPage from './pages/AdminPanelPage';
 import ColegiosPage from './pages/ColegiosPage';
 import SoportePage from './pages/SoportePage';
 import ForbiddenPage from './pages/ForbiddenPage';
+import AuthCallbackPage from './pages/AuthCallbackPage';
 
 /**
  * ProtectedRoute
@@ -109,6 +110,7 @@ const AppContent = () => {
     <Routes>
       {/* Ruta pública */}
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/auth/callback" element={<AuthCallbackPage />} />
       <Route path="/forbidden" element={<ForbiddenPage />} />
 
       {/* Rutas protegidas */}

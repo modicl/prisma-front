@@ -1,13 +1,14 @@
 import axios from 'axios';
 import storageUtils from '../utils/localStorage';
+import { getAuthToken } from './cognitoAuth';
 import { JOBS_ENDPOINTS } from '../constants/api';
 
 const docsApi = axios.create({
   baseURL: import.meta.env.VITE_BFF_URL ?? 'http://localhost:3010',
 });
 
-docsApi.interceptors.request.use((config) => {
-  const token = storageUtils.getToken();
+docsApi.interceptors.request.use(async (config) => {
+  const token = await getAuthToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }

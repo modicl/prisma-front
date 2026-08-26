@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { ADMIN_ENDPOINTS } from '../constants/api';
 import storageUtils from '../utils/localStorage';
+import { getAuthToken } from './cognitoAuth';
 import { handleAuthFailure } from './authSession';
 
 const createAdminApi = () => {
@@ -11,8 +12,8 @@ const createAdminApi = () => {
     },
   });
 
-  adminApi.interceptors?.request?.use?.((config) => {
-    const token = storageUtils.getToken();
+  adminApi.interceptors?.request?.use?.(async (config) => {
+    const token = await getAuthToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
