@@ -1,20 +1,15 @@
 /**
  * ActiveSessionContext.test.jsx
- * Pruebas unitarias del contexto de sesión activa (tracking SSE).
+ * Pruebas unitarias del contexto de sesión activa (tracking por polling).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 import { ActiveSessionProvider, useActiveSession } from './ActiveSessionContext';
+import chatService from '../services/chatService';
 
-vi.mock('../utils/localStorage', () => ({
-  default: { getToken: vi.fn(() => 'mock_token') },
-}));
-
-vi.mock('../constants/api', () => ({
-  CHAT_ENDPOINTS: {
-    STREAM: (sessionId) => `/chat/${sessionId}/stream`,
-  },
+vi.mock('../services/chatService', () => ({
+  default: { subscribeToSessionState: vi.fn() },
 }));
 
 // localStorage controlado (la jsdom de esta versión no expone clear utilizable).
@@ -28,17 +23,17 @@ const makeStorage = () => {
   };
 };
 
-let lastEventSource;
+// Cada suscripción queda capturada para poder empujar estados desde el test,
+// igual que antes se empujaban eventos por `onmessage`.
+let lastSubscription;
 beforeEach(() => {
   vi.clearAllMocks();
   global.localStorage = makeStorage();
-  lastEventSource = null;
-  global.EventSource = vi.fn(function (url) {
-    this.url = url;
-    this.onmessage = null;
-    this.onerror = null;
-    this.close = vi.fn();
-    lastEventSource = this;
+  lastSubscription = null;
+  chatService.subscribeToSessionState.mockImplementation((sessionId, onState, options) => {
+    const stop = vi.fn();
+    lastSubscription = { sessionId, onState, options, stop };
+    return stop;
   });
 });
 
@@ -84,6 +79,17 @@ describe('ActiveSessionContext', () => {
     );
     renderProvider();
     expect(screen.getByTestId('id')).toHaveTextContent('session_999');
+    // Sesión ya terminada: no debe retomar el polling.
+    expect(chatService.subscribeToSessionState).not.toHaveBeenCalled();
+  });
+
+  it('retoma el polling al montar si la sesión restaurada seguía en running', () => {
+    global.localStorage.getItem.mockReturnValueOnce(
+      JSON.stringify({ sessionId: 'session_888', phase: 'running' }),
+    );
+    renderProvider();
+    expect(chatService.subscribeToSessionState).toHaveBeenCalledTimes(1);
+    expect(lastSubscription.sessionId).toBe('session_888');
   });
 
   it('maneja localStorage corrupto sin lanzar', () => {
@@ -100,50 +106,65 @@ describe('ActiveSessionContext', () => {
     expect(() => render(<Bad />)).toThrow('useActiveSession must be used inside ActiveSessionProvider');
   });
 
-  it('startTracking crea la sesión en running y abre el EventSource', () => {
+  it('startTracking crea la sesión en running y arranca el polling', () => {
     renderProvider();
     fireEvent.click(screen.getByRole('button', { name: 'start' }));
     expect(screen.getByTestId('id')).toHaveTextContent('session_123');
     expect(screen.getByTestId('phase')).toHaveTextContent('running');
-    expect(global.EventSource).toHaveBeenCalledTimes(1);
-    expect(lastEventSource.url).toContain('/chat/session_123/stream');
+    expect(chatService.subscribeToSessionState).toHaveBeenCalledTimes(1);
+    expect(lastSubscription.sessionId).toBe('session_123');
   });
 
-  it('stopTracking limpia la sesión', () => {
+  it('stopTracking limpia la sesión y corta el polling', () => {
     renderProvider();
     fireEvent.click(screen.getByRole('button', { name: 'start' }));
+    const { stop } = lastSubscription;
     fireEvent.click(screen.getByRole('button', { name: 'stop' }));
     expect(screen.getByTestId('session')).toHaveTextContent('no-session');
+    expect(stop).toHaveBeenCalled();
   });
 
-  it('actualiza el estado ante un evento agent_start', () => {
+  it('refleja el paso actual que llega en el estado', () => {
     renderProvider();
     fireEvent.click(screen.getByRole('button', { name: 'start' }));
     act(() => {
-      lastEventSource.onmessage({
-        data: JSON.stringify({ type: 'agent_start', message: 'Procesando PACI' }),
-      });
+      lastSubscription.onState({ phase: 'running', current_step: 'Procesando PACI' });
     });
     expect(screen.getByTestId('step')).toHaveTextContent('Procesando PACI');
   });
 
-  it('marca la sesión como completed ante un evento completed', () => {
+  it('refleja awaiting_hitl sin depender de qué conexión recibió el evento', () => {
     renderProvider();
     fireEvent.click(screen.getByRole('button', { name: 'start' }));
     act(() => {
-      lastEventSource.onmessage({
-        data: JSON.stringify({ type: 'completed', workflow_status: 'success' }),
-      });
+      lastSubscription.onState({ phase: 'awaiting_hitl', hitl_data: { plan: 'x' } });
     });
-    expect(screen.getByTestId('phase')).toHaveTextContent('completed');
-    expect(lastEventSource.close).toHaveBeenCalled();
+    expect(screen.getByTestId('phase')).toHaveTextContent('awaiting_hitl');
   });
 
-  it('no reconecta si ya está rastreando la misma sesión', () => {
+  it('marca la sesión como completed cuando llega esa fase', () => {
+    renderProvider();
+    fireEvent.click(screen.getByRole('button', { name: 'start' }));
+    act(() => {
+      lastSubscription.onState({ phase: 'completed', workflow_status: 'success' });
+    });
+    expect(screen.getByTestId('phase')).toHaveTextContent('completed');
+  });
+
+  it('propaga la fase de error', () => {
+    renderProvider();
+    fireEvent.click(screen.getByRole('button', { name: 'start' }));
+    act(() => {
+      lastSubscription.onState({ phase: 'error', error: 'boom' });
+    });
+    expect(screen.getByTestId('phase')).toHaveTextContent('error');
+  });
+
+  it('no reabre el polling si ya está rastreando la misma sesión', () => {
     renderProvider();
     const start = screen.getByRole('button', { name: 'start' });
     fireEvent.click(start);
     fireEvent.click(start);
-    expect(global.EventSource).toHaveBeenCalledTimes(1);
+    expect(chatService.subscribeToSessionState).toHaveBeenCalledTimes(1);
   });
 });

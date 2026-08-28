@@ -3,7 +3,7 @@
  * Pruebas de la sesión en vivo: hidratación de estado, render según fase
  * (running/completed/error/awaiting_hitl), descarga, cancelación y respuesta HITL.
  *
- * EventSource (SSE) y los componentes hijos se mockean para aislar la página.
+ * El polling de estado y los componentes hijos se mockean para aislar la página.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -44,13 +44,10 @@ vi.mock('../components/features/ComplianceNotice', () => ({
   default: ({ reason }) => <div data-testid="compliance">{reason}</div>,
 }));
 
-vi.mock('../utils/localStorage', () => ({
-  default: { getToken: vi.fn(() => 'tok') },
-}));
-
 vi.mock('../services/chatService', () => ({
   default: {
     getSessionState: vi.fn(),
+    subscribeToSessionState: vi.fn(),
     downloadResult: vi.fn(),
     cancelSession: vi.fn(),
     sendHitlDecision: vi.fn(),
@@ -61,12 +58,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   // jsdom no implementa scrollIntoView (usado por el auto-scroll del chat)
   window.HTMLElement.prototype.scrollIntoView = vi.fn();
-  global.EventSource = class {
-    constructor(url) {
-      this.url = url;
-    }
-    close() {}
-  };
+  // La suscripción por polling devuelve su función de corte; el default es inerte
+  // y los tests que necesitan empujar estados la re-implementan.
+  chatService.subscribeToSessionState.mockImplementation(() => vi.fn());
 });
 
 describe('SesionPage', () => {

@@ -244,6 +244,140 @@ describe('chatService', () => {
     });
   });
 
+  describe('subscribeToSessionState', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('emite cada estado leído y sigue mientras la sesión no termine', async () => {
+      mockChatApi.get
+        .mockResolvedValueOnce({ data: { phase: 'running' } })
+        .mockResolvedValueOnce({ data: { phase: 'awaiting_hitl' } })
+        .mockResolvedValueOnce({ data: { phase: 'completed' } });
+
+      const onState = vi.fn();
+      chatService.subscribeToSessionState('session_123', onState, { interval: 1000 });
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(onState).toHaveBeenNthCalledWith(1, { phase: 'running' });
+
+      // awaiting_hitl NO es terminal: el docente todavía tiene que decidir
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(onState).toHaveBeenNthCalledWith(2, { phase: 'awaiting_hitl' });
+
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(onState).toHaveBeenNthCalledWith(3, { phase: 'completed' });
+
+      await vi.advanceTimersByTimeAsync(10000);
+      expect(onState).toHaveBeenCalledTimes(3);
+    });
+
+    it('se detiene al llegar a la fase error', async () => {
+      mockChatApi.get.mockResolvedValue({ data: { phase: 'error', error: 'boom' } });
+
+      const onState = vi.fn();
+      chatService.subscribeToSessionState('session_123', onState, { interval: 1000 });
+
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(10000);
+      expect(onState).toHaveBeenCalledTimes(1);
+    });
+
+    it('usa el intervalo por defecto cuando no se pasan opciones', async () => {
+      mockChatApi.get.mockResolvedValue({ data: { phase: 'running' } });
+
+      const onState = vi.fn();
+      const stop = chatService.subscribeToSessionState('session_123', onState);
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(onState).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(onState).toHaveBeenCalledTimes(2);
+      stop();
+    });
+
+    it('la función devuelta corta el polling', async () => {
+      mockChatApi.get.mockResolvedValue({ data: { phase: 'running' } });
+
+      const onState = vi.fn();
+      const stop = chatService.subscribeToSessionState('session_123', onState, { interval: 1000 });
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(onState).toHaveBeenCalledTimes(1);
+
+      stop();
+      await vi.advanceTimersByTimeAsync(10000);
+      expect(onState).toHaveBeenCalledTimes(1);
+    });
+
+    it('cortar antes del primer tick no deja timers pendientes', async () => {
+      mockChatApi.get.mockResolvedValue({ data: { phase: 'running' } });
+
+      const onState = vi.fn();
+      const stop = chatService.subscribeToSessionState('session_123', onState, { interval: 1000 });
+      stop();
+
+      await vi.advanceTimersByTimeAsync(10000);
+      expect(onState).not.toHaveBeenCalled();
+    });
+
+    it('tolera un fallo aislado y sigue consultando', async () => {
+      mockChatApi.get
+        .mockRejectedValueOnce(new Error('red caída'))
+        .mockResolvedValueOnce({ data: { phase: 'running' } });
+
+      const onState = vi.fn();
+      const onError = vi.fn();
+      chatService.subscribeToSessionState('session_123', onState, { interval: 1000, onError });
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(onState).not.toHaveBeenCalled();
+      expect(onError).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(onState).toHaveBeenCalledTimes(1);
+    });
+
+    it('corta y avisa tras maxFailures fallos consecutivos', async () => {
+      mockChatApi.get.mockRejectedValue(new Error('red caída'));
+
+      const onState = vi.fn();
+      const onError = vi.fn();
+      chatService.subscribeToSessionState('session_123', onState, {
+        interval: 1000,
+        maxFailures: 2,
+        onError,
+      });
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(onError).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(onError).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(10000);
+      expect(onError).toHaveBeenCalledTimes(1);
+    });
+
+    it('corta tras maxFailures aunque no se pase onError', async () => {
+      mockChatApi.get.mockRejectedValue(new Error('red caída'));
+
+      const onState = vi.fn();
+      chatService.subscribeToSessionState('session_123', onState, {
+        interval: 1000,
+        maxFailures: 1,
+      });
+
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(10000);
+      expect(onState).not.toHaveBeenCalled();
+    });
+  });
+
   describe('pollSession', () => {
     it('debe hacer polling del estado de la sesión', async () => {
       const mockState = { phase: 'completed' };

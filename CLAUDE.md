@@ -36,7 +36,7 @@ src/
                      CreatePACIModal/EditPACIModal/ViewPACIModal, CreateColegioModal/EditColegioModal/ViewColegioModal
     ui/             Button, Input, Modal, Badge, UserAvatar, SessionToast, FloatingSessionIndicator
   context/          AuthContext (sesión + rol), ActiveSessionContext (tracking global de la sesión
-                     de chat activa, con SSE propia y persistencia en localStorage)
+                     de chat activa, con polling propio y persistencia en localStorage)
   services/         Un archivo por dominio; ver §4. `services/index.js` es el barrel (incompleto:
                      solo re-exporta authService, dashboardService, chatService, api — el resto se
                      importa directo desde su archivo)
@@ -84,20 +84,31 @@ implementado, no es un objetivo pendiente:
 
 - **`NuevaSesionPage.jsx`** sube PACI + material y arranca la sesión (`chatService.startSession` →
   `POST /chat/start`, multipart).
-- **`SesionPage.jsx`** es el corazón del flujo: hidrata con `GET /chat/:id/state`, luego abre un
-  `EventSource` a `GET /chat/:id/stream?token=<jwt>` (el JWT va como query param porque `EventSource`
-  no permite headers custom). Tipos de evento manejados en `handleSSEEvent`: `ping` (ignorado),
-  `agent_start`/`agent_end` (paso actual), `message`, `hitl_required` (abre `HitlReviewModal`),
-  `completed`, `error`. Si el stream corta con error, **no reconecta**: hace un único `syncState()` via
-  GET y deja al usuario refrescar si hace falta.
-- **`context/ActiveSessionContext.jsx`** mantiene una **segunda conexión SSE independiente**, a nivel
+- **`SesionPage.jsx`** es el corazón del flujo: hidrata con `GET /chat/:id/state` y después se
+  suscribe con `chatService.subscribeToSessionState(...)`, que hace **polling** al mismo endpoint cada
+  3s. Cada lectura pasa por `applyState()`, que vuelca `messages`, `hitl_data` (abre `HitlReviewModal`),
+  `error`, `workflow_status`, `warnings` y `phase`. El polling se corta solo en las fases terminales
+  (`completed` / `error`) y tolera hasta 5 fallos consecutivos antes de rendirse.
+- **`context/ActiveSessionContext.jsx`** mantiene una **segunda suscripción independiente**, a nivel
   de app completa, para poder mostrar `FloatingSessionIndicator` y `SessionToast` aunque el usuario
   navegue fuera de `SesionPage`. Persiste el estado en `localStorage` (`prisma_active_session`) y
-  reconecta al montar si la sesión seguía `running`. **Gotcha documentado en el propio código**: como el
-  backend entrega el evento `hitl_required` a una sola conexión (cola compartida), `SesionPage` no
-  confía únicamente en su propio `EventSource` — también observa `activeSession` del contexto y
-  "espeja" `phase`/`hitlData` si el evento llegó por la conexión del contexto en lugar de la propia
-  (ver el `useEffect` que sincroniza `ctxPhase` en `SesionPage.jsx`).
+  retoma el polling al montar si la sesión seguía `running`.
+
+> **Por qué polling y no SSE (migración de 2026-08-27).** El chat tenía dos `EventSource` al mismo
+> stream. Se reemplazaron porque API Gateway corta cualquier respuesta a los **30s** y un flujo
+> completo tarda **5-15 minutos**, así que el SSE impedía poner `prisma_workflow` detrás del gateway.
+> El cambio fue solo de front: `GET /chat/:id/state` ya leía de DynamoDB.
+>
+> De yapa desaparecieron dos gotchas que estaban documentados acá:
+> 1. El backend entregaba `hitl_required` a **una sola** conexión (cola compartida), y `SesionPage`
+>    tenía que "espejar" el `phase`/`hitlData` del contexto por las dudas. Leer el estado **no lo
+>    consume**, así que las dos suscripciones ven lo mismo y ese `useEffect` se eliminó.
+> 2. El JWT viajaba como `?token=<jwt>` en la URL porque `EventSource` no admite headers. Ahora va
+>    en el header `Authorization` como cualquier otra llamada.
+>
+> **Lo único que se perdió:** `currentStep` ("Agente 2 trabajando…") salía del evento `agent_start`,
+> que no se espeja a DynamoDB. El front ya lee `state.current_step` si aparece; falta agregarlo a
+> `sync_to_dynamo()` y a la respuesta de `/state` en `prisma_workflow`.
 - **`HitlReviewModal.jsx`**: modal bloqueante (sin botón de cerrar, intercepta `Escape` con
   `stopPropagation` en fase de captura, el click en el overlay no cierra). Dos pestañas — *Análisis PACI
   (Agente 1)* y *Planificación Adaptada (Agente 2)* — cuyo contenido Markdown se renderiza con
@@ -179,13 +190,16 @@ proyecto).
 - **`VITE_CHAT_API_URL ?? ''`**: usar `??` (no `||`) es intencional — `''` es un valor válido (same-origin
   en prod) y `'' || fallback` caería mal al fallback. El mismo patrón se repite en `VITE_BFF_URL ?? '...'`
   en cada servicio.
-- **El JWT viaja como query param (`?token=`) en las conexiones SSE** (`EventSource` nativo no soporta
-  headers custom), tanto en `SesionPage.jsx` como en `ActiveSessionContext.jsx`. Cualquier proxy/CDN
-  intermedio debe evitar loguear esas URLs.
-- **Doble conexión SSE simultánea** al mismo stream cuando el usuario está dentro de `SesionPage`: una
-  desde el contexto global (`ActiveSessionContext`, arrancada por `startTracking`) y otra desde la propia
-  página. Es deliberado (ver comentarios en el código, §5), pero hay que tenerlo presente al debuggear
-  duplicación de eventos o reconexiones.
+- **Doble suscripción simultánea** al estado de la misma sesión cuando el usuario está dentro de
+  `SesionPage`: una desde el contexto global (`ActiveSessionContext`, arrancada por `startTracking`) y
+  otra desde la propia página. Es deliberado. Con polling ya no causa problemas —leer el estado no lo
+  consume—, pero duplica las llamadas a `GET /state`.
+- **`chatService.pollSession` NO es el helper de polling del chat.** Es código muerto: solo resuelve al
+  llegar a una fase terminal, no expone `awaiting_hitl` y muere con el primer error de red. El que usa
+  la app es **`subscribeToSessionState`**.
+- **`CHAT_ENDPOINTS.STREAM` quedó sin uso** en el front tras la migración a polling. El endpoint SSE
+  sigue existiendo en el backend; la constante se dejó a propósito por si hace falta debuggear contra
+  él, pero ningún componente la referencia.
 - **`HitlReviewModal` no puede cerrarse sin decidir** — si necesitás un "salir sin decidir" para QA/debug,
   no existe en la UI; hay que cancelar la sesión completa (`chatService.cancelSession`) desde el header
   de `SesionPage`.

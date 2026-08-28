@@ -155,7 +155,68 @@ const chatService = {
   },
 
   /**
+   * Subscribe To Session State - Suscripción por polling al estado de la sesión.
+   *
+   * Reemplaza la conexión SSE (`GET /chat/:id/stream`), que no puede pasar por API
+   * Gateway: el HTTP API corta cualquier respuesta a los 30s y un flujo completo
+   * tarda entre 5 y 15 minutos. `GET /chat/:id/state` lee de DynamoDB, así que
+   * además sobrevive a un reinicio del backend.
+   *
+   * Llama a `onState` con CADA lectura -incluida `awaiting_hitl`, que es donde el
+   * docente decide- y devuelve una función para cortar, equivalente a
+   * `EventSource.close()`.
+   *
+   * A diferencia de `pollSession`, no se resuelve una sola vez al final ni muere
+   * con un error de red aislado: tolera `maxFailures` fallos consecutivos.
+   */
+  subscribeToSessionState: (sessionId, onState, options = {}) => {
+    const { interval = 3000, maxFailures = 5, onError } = options;
+    let stopped = false;
+    let timer = null;
+    let failures = 0;
+
+    const stop = () => {
+      stopped = true;
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    };
+
+    const tick = async () => {
+      if (stopped) return;
+      try {
+        const state = await chatService.getSessionState(sessionId);
+        if (stopped) return;
+        failures = 0;
+        onState(state);
+        // El workflow solo emite estas dos fases terminales; `cancelled` viaja en
+        // workflow_status, no en phase (ver prisma_workflow/api/session_store.py).
+        if (state.phase === 'completed' || state.phase === 'error') {
+          stop();
+          return;
+        }
+      } catch (error) {
+        if (stopped) return;
+        failures += 1;
+        if (failures >= maxFailures) {
+          stop();
+          if (onError) onError(error);
+          return;
+        }
+      }
+      if (!stopped) timer = setTimeout(tick, interval);
+    };
+
+    tick();
+    return stop;
+  },
+
+  /**
    * Poll Session - Hace polling continuo del estado de la sesión
+   *
+   * NOTA: no se usa en la app. Para seguir una sesión en vivo usá
+   * `subscribeToSessionState`, que emite los estados intermedios.
    */
   pollSession: async (sessionId, interval = 2000, timeout = null) => {
     return new Promise((resolve, reject) => {

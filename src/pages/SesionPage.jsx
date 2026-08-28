@@ -1,9 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import MainContainer from '../components/layout/MainContainer';
 import chatService from '../services/chatService';
-import { CHAT_ENDPOINTS } from '../constants/api';
-import storageUtils from '../utils/localStorage';
 import { useActiveSession } from '../context/ActiveSessionContext';
 import FeedbackWidget from '../components/features/FeedbackWidget';
 import HitlReviewModal from '../components/features/HitlReviewModal';
@@ -50,7 +48,7 @@ const PHASE_CONFIG = {
 const SesionPage = () => {
   const { sessionId } = useParams();
   const navigate = useNavigate();
-  const { activeSession, startTracking, stopTracking } = useActiveSession();
+  const { startTracking, stopTracking } = useActiveSession();
 
   const [phase, setPhase] = useState('running');
   const [workflowStatus, setWorkflowStatus] = useState(null);
@@ -62,24 +60,6 @@ const SesionPage = () => {
   const [downloading, setDownloading] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const bottomRef = useRef(null);
-  const eventSourceRef = useRef(null);
-
-  // Sincronizar fase terminal desde el contexto global para que el botón de descarga
-  // y el toast aparezcan al mismo tiempo (ambos tienen SSE independientes al mismo stream).
-  useEffect(() => {
-    if (activeSession?.sessionId !== sessionId) return;
-    const ctxPhase = activeSession?.phase;
-    if (ctxPhase === 'completed' || ctxPhase === 'error') {
-      setPhase(ctxPhase);
-      if (activeSession?.workflowStatus) setWorkflowStatus(activeSession.workflowStatus);
-    } else if (ctxPhase === 'awaiting_hitl') {
-      // El HITL pudo llegar por la conexión SSE del contexto (no la de esta página,
-      // por la cola compartida en backend). Espejamos fase + hitl_data para que el
-      // modal aparezca en vivo sin tener que re-montar la página.
-      setPhase('awaiting_hitl');
-      if (activeSession?.hitlData) setHitlData(activeSession.hitlData);
-    }
-  }, [activeSession?.phase, activeSession?.workflowStatus, activeSession?.hitlData, sessionId]);
 
   // Cuando la sesión termina mientras el usuario está en esta página,
   // limpiar el tracking global para que el indicador flotante no aparezca
@@ -90,116 +70,49 @@ const SesionPage = () => {
     }
   }, [phase, stopTracking]);
 
-  // ── Manejador de eventos SSE ──────────────────────────────────────────────
-  const handleSSEEvent = useCallback((event) => {
-    // Guard: el servidor puede enviar pings vacíos o payloads malformados
-    let data;
-    try {
-      data = JSON.parse(event.data);
-    } catch {
-      return;
-    }
-
-    if (data.type === 'ping') return;
-
-    switch (data.type) {
-      case 'agent_start':
-        setCurrentStep(data.message);
-        break;
-
-      case 'agent_end':
-        setCurrentStep('');
-        break;
-
-      case 'message':
-        setMessages(prev => [...prev, { role: data.role, content: data.content }]);
-        break;
-
-      case 'hitl_required':
-        setHitlData(data.hitl_data);
-        setPhase('awaiting_hitl');
-        break;
-
-      case 'completed':
-        setPhase('completed');
-        setWorkflowStatus(data.workflow_status);
-        setWarnings(data.warnings || []);
-        setCurrentStep('');
-        break;
-
-      case 'error':
-        setPhase('error');
-        setError(data.message);
-        if (data.workflow_status) setWorkflowStatus(data.workflow_status);
-        setCurrentStep('');
-        break;
-
-      default:
-        console.warn('Evento SSE desconocido:', data.type);
-    }
-  }, []);
-
-  // ── Conectar a SSE ────────────────────────────────────────────────────────
+  // ── Polling del estado de la sesión ───────────────────────────────────────
+  // Reemplaza la conexión SSE: API Gateway corta cualquier respuesta a los 30s y
+  // un flujo completo tarda entre 5 y 15 minutos. `GET /chat/:id/state` lee de
+  // DynamoDB, así que además sobrevive a un reinicio del backend.
   useEffect(() => {
     let cancelled = false;
+    let stopPolling = null;
 
-    // Sync de estado puntual — se usa en hidratación y como fallback si el stream cierra
-    const syncState = async () => {
-      try {
-        const state = await chatService.getSessionState(sessionId);
-        if (cancelled) return;
-        setMessages(state.messages || []);
-        if (state.hitl_data) setHitlData(state.hitl_data);
-        if (state.error) setError(state.error);
-        setWorkflowStatus(state.workflow_status || null);
-        setWarnings(state.warnings || []);
-        setPhase(state.phase);
-      } catch (err) {
-        if (cancelled) return;
-        setError(err.message);
-        setPhase('error');
-      }
+    const applyState = (state) => {
+      setMessages(state.messages || []);
+      if (state.hitl_data) setHitlData(state.hitl_data);
+      if (state.error) setError(state.error);
+      setWorkflowStatus(state.workflow_status || null);
+      setWarnings(state.warnings || []);
+      // `current_step` todavía no viaja en GET /state (sale del evento `agent_start`,
+      // que no se espeja a DynamoDB). Queda leído para cuando el backend lo agregue.
+      setCurrentStep(state.current_step || '');
+      setPhase(state.phase);
     };
 
-    const connectToSSE = () => {
-      const token = storageUtils.getToken();
-      const base = CHAT_ENDPOINTS.STREAM(sessionId);
-      const url = token ? `${base}?token=${encodeURIComponent(token)}` : base;
-      const source = new EventSource(url);
-      eventSourceRef.current = source;
-
-      source.onmessage = handleSSEEvent;
-
-      source.onerror = () => {
-        // El stream cerró inesperadamente — sincronizar estado una vez, sin reconectar
-        // El backend cierra limpiamente en eventos terminales; si cerró por error de red,
-        // el GET /state devuelve el estado actual y el usuario puede refrescar si necesita.
-        source.close();
-        eventSourceRef.current = null;
-        if (!cancelled) syncState();
-      };
-    };
-
-    // Hidratación inicial: leer estado actual, luego conectar SSE si no está terminado
     const hydrate = async () => {
       try {
         const state = await chatService.getSessionState(sessionId);
         if (cancelled) return;
+        applyState(state);
 
-        setMessages(state.messages || []);
-        if (state.hitl_data) setHitlData(state.hitl_data);
-        if (state.error) setError(state.error);
-        setWorkflowStatus(state.workflow_status || null);
-        setWarnings(state.warnings || []);
-        setPhase(state.phase);
-
-        // No conectar SSE si la sesión ya terminó
+        // No arrancar el polling si la sesión ya terminó
         if (state.phase === 'completed' || state.phase === 'error') return;
 
         // Registrar en contexto global (soporte para page refresh)
         startTracking(sessionId);
 
-        connectToSSE();
+        stopPolling = chatService.subscribeToSessionState(
+          sessionId,
+          (next) => { if (!cancelled) applyState(next); },
+          {
+            onError: (err) => {
+              if (cancelled) return;
+              setError(err.message);
+              setPhase('error');
+            },
+          },
+        );
       } catch (err) {
         if (cancelled) return;
         setError(err.message);
@@ -211,12 +124,9 @@ const SesionPage = () => {
 
     return () => {
       cancelled = true;
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
+      if (stopPolling) stopPolling();
     };
-  }, [sessionId, handleSSEEvent]);
+  }, [sessionId, startTracking]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
