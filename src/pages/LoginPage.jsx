@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Input, Button, Alert, Spinner } from '../components';
 import authService from '../services/authService';
-import { signInWithGoogle } from '../services/cognitoAuth';
+import { signInWithGoogle, signInWithMicrosoft } from '../services/cognitoAuth';
 
 const LoginPage = () => {
   const navigate = useNavigate();
@@ -43,17 +43,20 @@ const LoginPage = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleGoogleLogin = async () => {
+  // Redirige a Cognito -> IdP federado (Google o Microsoft). Vuelve a /auth/callback.
+  const handleFederatedLogin = async (signIn, providerName) => {
     setApiError(null);
     setIsRedirecting(true);
     try {
-      // Redirige a Cognito -> Google. Vuelve a /auth/callback.
-      await signInWithGoogle();
+      await signIn();
     } catch (error) {
       setIsRedirecting(false);
-      setApiError(error.message || 'No se pudo conectar con Google. Intenta nuevamente.');
+      setApiError(error.message || `No se pudo conectar con ${providerName}. Intenta nuevamente.`);
     }
   };
+
+  const handleGoogleLogin = () => handleFederatedLogin(signInWithGoogle, 'Google');
+  const handleMicrosoftLogin = () => handleFederatedLogin(signInWithMicrosoft, 'Microsoft');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -168,6 +171,21 @@ const LoginPage = () => {
                     <path fill="#EA4335" d="M12 4.98c1.69 0 3.21.58 4.4 1.72l3.3-3.3C17.71 1.5 15.1.5 12 .5 7.52.5 3.65 3.07 1.69 6.85l3.85 2.98C6.45 7.1 9 4.98 12 4.98Z"/>
                   </svg>
                   {isRedirecting ? 'Redirigiendo...' : 'Continuar con Google'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleMicrosoftLogin}
+                  disabled={isRedirecting || isLoading}
+                  className="mt-3 w-full flex items-center justify-center gap-3 px-6 py-3.5 rounded-xl border border-outline-variant/40 bg-surface-container-lowest text-on-surface font-body font-medium transition-colors hover:bg-surface-container-low focus:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="1" y="1" width="10.5" height="10.5" fill="#F25022"/>
+                    <rect x="12.5" y="1" width="10.5" height="10.5" fill="#7FBA00"/>
+                    <rect x="1" y="12.5" width="10.5" height="10.5" fill="#00A4EF"/>
+                    <rect x="12.5" y="12.5" width="10.5" height="10.5" fill="#FFB900"/>
+                  </svg>
+                  {isRedirecting ? 'Redirigiendo...' : 'Continuar con Microsoft'}
                 </button>
 
                 <div className="flex items-center gap-4 my-6" role="separator">

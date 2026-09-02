@@ -87,6 +87,14 @@ export const getAuthToken = async () => {
 /** Redirige a Google vía Cognito (Authorization Code + PKCE). */
 export const signInWithGoogle = () => signInWithRedirect({ provider: 'Google' });
 
+/**
+ * Redirige a Microsoft (Entra External ID) vía Cognito. Es un IdP OIDC
+ * custom del User Pool: el nombre tiene que coincidir letra por letra con
+ * el configurado en la consola (Social and external providers).
+ */
+export const signInWithMicrosoft = () =>
+  signInWithRedirect({ provider: { custom: 'MicrosoftEntraID' } });
+
 /** Redirige a la pantalla de login de Cognito (email/password del pool). */
 export const signInWithCognito = () => signInWithRedirect();
 
@@ -109,6 +117,7 @@ export default {
   getCognitoUser,
   getAuthToken,
   signInWithGoogle,
+  signInWithMicrosoft,
   signInWithCognito,
   signOutCognito,
 };

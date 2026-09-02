@@ -8,20 +8,27 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import LoginPage from './LoginPage';
 import authService from '../services/authService';
+import { signInWithGoogle, signInWithMicrosoft } from '../services/cognitoAuth';
 
 const mockNavigate = vi.fn();
 const mockLogin = vi.fn();
+let cognitoEnabled = false;
 
 vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
 }));
 
 vi.mock('../context/AuthContext', () => ({
-  useAuth: () => ({ login: mockLogin }),
+  useAuth: () => ({ login: mockLogin, isCognitoEnabled: cognitoEnabled }),
 }));
 
 vi.mock('../services/authService', () => ({
   default: { login: vi.fn() },
+}));
+
+vi.mock('../services/cognitoAuth', () => ({
+  signInWithGoogle: vi.fn(),
+  signInWithMicrosoft: vi.fn(),
 }));
 
 vi.mock('../components', () => ({
@@ -53,6 +60,7 @@ const submit = () =>
 describe('LoginPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    cognitoEnabled = false;
   });
 
   it('muestra errores de validación con campos vacíos', async () => {
@@ -112,5 +120,60 @@ describe('LoginPage', () => {
     await waitFor(() =>
       expect(screen.getByText('Credenciales inválidas')).toBeInTheDocument(),
     );
+  });
+
+  describe('login federado (Cognito)', () => {
+    beforeEach(() => {
+      cognitoEnabled = true;
+    });
+
+    it('no muestra los botones federados si Cognito no está habilitado', () => {
+      cognitoEnabled = false;
+      render(<LoginPage />);
+      expect(screen.queryByText('Continuar con Google')).not.toBeInTheDocument();
+      expect(screen.queryByText('Continuar con Microsoft')).not.toBeInTheDocument();
+    });
+
+    it('redirige a Google al hacer clic en su botón', async () => {
+      signInWithGoogle.mockResolvedValue();
+      render(<LoginPage />);
+      fireEvent.click(screen.getByText('Continuar con Google'));
+
+      await waitFor(() => expect(signInWithGoogle).toHaveBeenCalled());
+      expect(signInWithMicrosoft).not.toHaveBeenCalled();
+      // Ambos botones quedan deshabilitados mientras redirige.
+      expect(screen.getAllByText('Redirigiendo...')).toHaveLength(2);
+    });
+
+    it('redirige a Microsoft al hacer clic en su botón', async () => {
+      signInWithMicrosoft.mockResolvedValue();
+      render(<LoginPage />);
+      fireEvent.click(screen.getByText('Continuar con Microsoft'));
+
+      await waitFor(() => expect(signInWithMicrosoft).toHaveBeenCalled());
+      expect(signInWithGoogle).not.toHaveBeenCalled();
+    });
+
+    it('muestra el error si la redirección a Microsoft falla', async () => {
+      signInWithMicrosoft.mockRejectedValue(new Error('boom'));
+      render(<LoginPage />);
+      fireEvent.click(screen.getByText('Continuar con Microsoft'));
+
+      await waitFor(() => expect(screen.getByText('boom')).toBeInTheDocument());
+      // Al fallar, vuelve a mostrar los botones habilitados.
+      expect(screen.getByText('Continuar con Microsoft')).toBeInTheDocument();
+    });
+
+    it('usa el mensaje genérico si el error no trae message', async () => {
+      signInWithMicrosoft.mockRejectedValue({});
+      render(<LoginPage />);
+      fireEvent.click(screen.getByText('Continuar con Microsoft'));
+
+      await waitFor(() =>
+        expect(
+          screen.getByText('No se pudo conectar con Microsoft. Intenta nuevamente.'),
+        ).toBeInTheDocument(),
+      );
+    });
   });
 });
