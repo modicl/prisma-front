@@ -10,7 +10,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import storageUtils from '../utils/localStorage';
 import { resetAuthRedirectLock } from '../services/authSession';
-import { getCognitoSession, signOutCognito } from '../services/cognitoAuth';
+import { getCognitoSession, signOutCognito, PENDING_ROLE } from '../services/cognitoAuth';
 import { isCognitoEnabled } from '../config/cognito';
 
 const AuthContext = createContext();
@@ -22,6 +22,8 @@ export const AuthProvider = ({ children }) => {
   const [authSource, setAuthSource] = useState(null); // 'cognito' | 'legacy' | null
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPERADMIN';
   const isSuperAdmin = user?.role === 'SUPERADMIN';
+  // Sin grupo asignado en Cognito: autenticado pero sin acceso a nada.
+  const isPending = user?.role === PENDING_ROLE;
 
   // Recuperar sesión al montar: primero Cognito, después el token legacy.
   useEffect(() => {
@@ -146,6 +148,7 @@ export const AuthProvider = ({ children }) => {
       isLoading,
       isAdmin,
       isSuperAdmin,
+      isPending,
       authSource,
       isCognitoEnabled,
       login,

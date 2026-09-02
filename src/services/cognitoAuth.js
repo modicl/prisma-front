@@ -20,9 +20,15 @@ import { isCognitoEnabled } from '../config/cognito';
  * IMPORTANTE: `cognito:groups` incluye grupos autogenerados por cada IdP
  * federado (ej. "us-east-1_h1uG5pYAS_Google") que NO son roles. Por eso el
  * rol se resuelve por lista blanca y nunca por posición (`groups[0]`).
+ *
+ * PENDING no es un grupo de Cognito: es la AUSENCIA de uno. Cualquiera puede
+ * registrarse con Google o Microsoft, pero hasta que un admin le asigne un
+ * grupo queda sin acceso a nada (ver PendingPage). El default era TEACHER, lo
+ * que convertía a cualquier cuenta de Google en docente.
  */
 export const ROLES = ['SUPERADMIN', 'ADMIN', 'TEACHER'];
-export const DEFAULT_ROLE = 'TEACHER';
+export const PENDING_ROLE = 'PENDING';
+export const DEFAULT_ROLE = PENDING_ROLE;
 
 export const resolveRole = (groups) => {
   const list = Array.isArray(groups) ? groups : [];
@@ -110,6 +116,7 @@ export const signOutCognito = async () => {
 
 export default {
   ROLES,
+  PENDING_ROLE,
   DEFAULT_ROLE,
   resolveRole,
   mapClaimsToUser,

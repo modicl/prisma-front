@@ -67,6 +67,57 @@ describe('AuthContext', () => {
       expect(screen.getByTestId('is-admin')).toHaveTextContent('false');
     });
 
+    it('marca isPending cuando el usuario no tiene grupo asignado', async () => {
+      storageUtils.getUser.mockReturnValueOnce({ email: 'nuevo@gmail.com', role: 'PENDING' });
+      storageUtils.getToken.mockReturnValueOnce('token_123');
+
+      const TestComponent = () => {
+        const { isPending, isAdmin, isSuperAdmin, isAuthenticated } = useAuth();
+        return (
+          <div>
+            <div data-testid="is-pending">{String(isPending)}</div>
+            <div data-testid="is-admin">{String(isAdmin)}</div>
+            <div data-testid="is-superadmin">{String(isSuperAdmin)}</div>
+            <div data-testid="is-authenticated">{String(isAuthenticated)}</div>
+          </div>
+        );
+      };
+
+      render(
+        <AuthProvider>
+          <TestComponent />
+        </AuthProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('is-pending')).toHaveTextContent('true');
+      });
+      // Está autenticado, pero sin ninguno de los privilegios.
+      expect(screen.getByTestId('is-authenticated')).toHaveTextContent('true');
+      expect(screen.getByTestId('is-admin')).toHaveTextContent('false');
+      expect(screen.getByTestId('is-superadmin')).toHaveTextContent('false');
+    });
+
+    it('no marca isPending para un docente habilitado', async () => {
+      storageUtils.getUser.mockReturnValueOnce({ email: 'doc@test.cl', role: 'TEACHER' });
+      storageUtils.getToken.mockReturnValueOnce('token_123');
+
+      const TestComponent = () => {
+        const { isPending } = useAuth();
+        return <div data-testid="is-pending">{String(isPending)}</div>;
+      };
+
+      render(
+        <AuthProvider>
+          <TestComponent />
+        </AuthProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('is-pending')).toHaveTextContent('false');
+      });
+    });
+
     it('debe inicializar sin usuario si no hay sesión guardada', () => {
       storageUtils.getUser.mockReturnValueOnce(null);
       storageUtils.getToken.mockReturnValueOnce(null);

@@ -24,6 +24,7 @@ import AdminPanelPage from './pages/AdminPanelPage';
 import ColegiosPage from './pages/ColegiosPage';
 import SoportePage from './pages/SoportePage';
 import ForbiddenPage from './pages/ForbiddenPage';
+import PendingPage from './pages/PendingPage';
 import AuthCallbackPage from './pages/AuthCallbackPage';
 
 /**
@@ -31,7 +32,7 @@ import AuthCallbackPage from './pages/AuthCallbackPage';
  * Componente para proteger rutas que requieren autenticación
  */
 const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, isPending } = useAuth();
 
   if (isLoading) {
     return (
@@ -46,13 +47,48 @@ const ProtectedRoute = ({ children }) => {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Autenticado pero sin grupo en Cognito: no puede entrar a ninguna sección.
+  if (isPending) {
+    return <Navigate to="/pending" replace />;
+  }
+
+  return children;
+};
+
+/**
+ * Ruta de la pantalla de espera. Requiere sesión, pero es la única que un
+ * PENDING puede ver; a un usuario ya habilitado lo devuelve al dashboard para
+ * que no quede varado acá.
+ */
+const PendingRoute = ({ children }) => {
+  const { isAuthenticated, isLoading, isPending } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-on-surface-variant">Cargando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (!isPending) {
+    return <Navigate to="/dashboard" replace />;
   }
 
   return children;
 };
 
 const AdminRoute = ({ children }) => {
-  const { isAuthenticated, isLoading, isAdmin } = useAuth();
+  const { isAuthenticated, isLoading, isAdmin, isPending } = useAuth();
 
   if (isLoading) {
     return (
@@ -67,6 +103,10 @@ const AdminRoute = ({ children }) => {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (isPending) {
+    return <Navigate to="/pending" replace />;
   }
 
   if (!isAdmin) {
@@ -77,7 +117,7 @@ const AdminRoute = ({ children }) => {
 };
 
 const SuperAdminRoute = ({ children }) => {
-  const { isAuthenticated, isLoading, isSuperAdmin } = useAuth();
+  const { isAuthenticated, isLoading, isSuperAdmin, isPending } = useAuth();
 
   if (isLoading) {
     return (
@@ -92,6 +132,10 @@ const SuperAdminRoute = ({ children }) => {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (isPending) {
+    return <Navigate to="/pending" replace />;
   }
 
   if (!isSuperAdmin) {
@@ -112,6 +156,14 @@ const AppContent = () => {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
       <Route path="/forbidden" element={<ForbiddenPage />} />
+      <Route
+        path="/pending"
+        element={
+          <PendingRoute>
+            <PendingPage />
+          </PendingRoute>
+        }
+      />
 
       {/* Rutas protegidas */}
       <Route
