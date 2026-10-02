@@ -38,33 +38,6 @@ chatApi.interceptors.response.use(
 
 const chatService = {
   /**
-   * Start Chat Session - Inicia una sesión del flujo multi-agente
-   */
-  startSession: async (paciFile, materialFile, prompt = null, schoolId = 'colegio_demo') => {
-    try {
-      const formData = new FormData();
-      formData.append('paci_file', paciFile);
-      formData.append('material_file', materialFile);
-      if (prompt) formData.append('prompt', prompt);
-      formData.append('school_id', schoolId);
-
-      const response = await chatApi.post(CHAT_ENDPOINTS.START, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      return response.data;
-    } catch (error) {
-      // 409: el docente ya tiene un flujo activo (el servidor manda {code, message, session_id} en `detail`).
-      const detail = error.response?.data?.detail;
-      if (error.response?.status === 409 && detail && typeof detail === 'object') {
-        const conflicto = new Error(detail.message || 'Ya tienes un flujo en acción');
-        conflicto.activeSessionId = detail.session_id || null;
-        throw conflicto;
-      }
-      throw new Error(error.response?.data?.message || 'Error al iniciar sesión de chat');
-    }
-  },
-
-  /**
    * Get Session State - Obtiene el estado actual de una sesión
    */
   getSessionState: async (sessionId) => {

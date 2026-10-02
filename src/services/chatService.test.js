@@ -32,58 +32,6 @@ describe('chatService', () => {
     vi.clearAllMocks();
   });
 
-  describe('startSession', () => {
-    it('muestra el mensaje del servidor cuando ya hay un flujo en acción (409)', async () => {
-      mockChatApi.post.mockRejectedValueOnce({
-        response: { status: 409, data: { detail: { code: 'flow_in_progress', message: 'Ya tienes un flujo en acción', session_id: 's-1' } } },
-      });
-      const err = await chatService.startSession(new File(['a'], 'a.pdf'), new File(['b'], 'b.docx')).catch((e) => e);
-      expect(err.message).toBe('Ya tienes un flujo en acción');
-      expect(err.activeSessionId).toBe('s-1');
-    });
-
-    it('debe iniciar una sesión de chat correctamente', async () => {
-      const mockSession = { session_id: 'session_123', status: 'running' };
-      mockChatApi.post.mockResolvedValueOnce({ data: mockSession });
-
-      const paciFile = new File(['paci content'], 'paci.pdf');
-      const materialFile = new File(['material content'], 'material.pdf');
-
-      const result = await chatService.startSession(paciFile, materialFile);
-
-      expect(result).toEqual(mockSession);
-      expect(mockChatApi.post).toHaveBeenCalled();
-    });
-
-    it('debe incluir prompt si se proporciona', async () => {
-      const mockSession = { session_id: 'session_123' };
-      mockChatApi.post.mockResolvedValueOnce({ data: mockSession });
-
-      const paciFile = new File(['content'], 'paci.pdf');
-      const materialFile = new File(['content'], 'material.pdf');
-      const prompt = 'Genera una adaptación curricular';
-
-      await chatService.startSession(paciFile, materialFile, prompt);
-
-      expect(mockChatApi.post).toHaveBeenCalled();
-    });
-
-    it('debe manejar error al iniciar sesión', async () => {
-      mockChatApi.post.mockRejectedValueOnce({
-        response: {
-          data: { message: 'Archivos inválidos' },
-        },
-      });
-
-      const paciFile = new File(['content'], 'paci.pdf');
-      const materialFile = new File(['content'], 'material.pdf');
-
-      await expect(chatService.startSession(paciFile, materialFile)).rejects.toThrow(
-        'Archivos inválidos'
-      );
-    });
-  });
-
   describe('getSessionState', () => {
     it('debe obtener el estado de una sesión', async () => {
       const mockState = { session_id: 'session_123', status: 'completed', progress: 100 };

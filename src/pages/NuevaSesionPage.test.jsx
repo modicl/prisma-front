@@ -34,9 +34,6 @@ vi.mock('../components/ui', () => ({
 vi.mock('../services/jobsService', () => ({
   default: { createJob: vi.fn() },
 }));
-vi.mock('../services/chatService', () => ({
-  default: { startSession: vi.fn() },
-}));
 
 const uploadFile = (container, name = 'file.pdf') => {
   const input = container.querySelector('input[type="file"]');

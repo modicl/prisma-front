@@ -4,7 +4,6 @@ import MainContainer from '../components/layout/MainContainer';
 import { useActiveSession } from '../context/ActiveSessionContext';
 import { Button, Alert } from '../components/ui';
 import jobsService from '../services/jobsService';
-import chatService from '../services/chatService';
 
 const STEPS = [
   { id: 1, label: 'Perfil PACI', icon: 'description' },
@@ -124,22 +123,6 @@ const NuevaSesionPage = () => {
     }
   };
 
-  const handleMockSimulation = async (scenarioId) => {
-    const mockFile = (name, type) => new File(['mock'], name, { type });
-    try {
-      const result = await chatService.startSession(
-        mockFile('paci.pdf', 'application/pdf'),
-        mockFile('material.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'),
-        '',
-        scenarioId,
-      );
-      startTracking(result.session_id);
-      navigate(`/sesion/${result.session_id}`);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
   const handleReset = () => {
     setPaciFile(null);
     setPlanningFile(null);
@@ -247,30 +230,6 @@ const NuevaSesionPage = () => {
             </Button>
           )}
         </div>
-
-        {import.meta.env.DEV && (
-          <div className="border border-dashed border-stone-300 dark:border-stone-700 rounded-2xl p-4">
-            <p className="text-xs font-semibold text-stone-400 dark:text-stone-500 mb-3 uppercase tracking-wide">
-              Simulación de flujo — solo en desarrollo
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { id: '__mock_success__',  label: 'Éxito con HITL',  color: 'bg-lime-100 dark:bg-lime-900/30 text-lime-800 dark:text-lime-300 hover:bg-lime-200 dark:hover:bg-lime-900/50' },
-                { id: '__mock_fast__',     label: 'Éxito rápido',    color: 'bg-sky-100 dark:bg-sky-900/30 text-sky-800 dark:text-sky-300 hover:bg-sky-200 dark:hover:bg-sky-900/50' },
-                { id: '__mock_degraded__', label: 'Degradado',       color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/50' },
-                { id: '__mock_error__',    label: 'Error',           color: 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50' },
-              ].map(({ id, label, color }) => (
-                <button
-                  key={id}
-                  onClick={() => handleMockSimulation(id)}
-                  className={`py-2 px-3 rounded-xl text-xs font-semibold transition-colors ${color}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </MainContainer>
   );
