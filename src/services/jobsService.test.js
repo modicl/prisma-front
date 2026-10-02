@@ -26,6 +26,30 @@ describe('jobsService', () => {
     vi.clearAllMocks();
   });
 
+  describe('getActiveSession', () => {
+    it('devuelve el flujo activo del docente', async () => {
+      const active = { sessionId: 's-1', phase: 'awaiting_hitl', workflowStatus: null };
+      mockDocsApi.get.mockResolvedValueOnce({ data: { active } });
+      await expect(jobsService.getActiveSession()).resolves.toEqual(active);
+    });
+
+    it('devuelve null si no hay flujo activo', async () => {
+      mockDocsApi.get.mockResolvedValueOnce({ data: { active: null } });
+      await expect(jobsService.getActiveSession()).resolves.toBeNull();
+    });
+
+    it('lanza error si el BFF entrega un 4xx colapsado a 200 (sesión vencida)', async () => {
+      // El BFF convierte los 4xx de los microservicios en 200 con el error en el cuerpo (gotcha 9b).
+      mockDocsApi.get.mockResolvedValueOnce({ data: { statusCode: 401, message: 'Unauthorized' } });
+      await expect(jobsService.getActiveSession()).rejects.toThrow('Unauthorized');
+    });
+
+    it('lanza error si falla la red', async () => {
+      mockDocsApi.get.mockRejectedValueOnce(new Error('network'));
+      await expect(jobsService.getActiveSession()).rejects.toThrow();
+    });
+  });
+
   describe('createJob', () => {
     const cuerpo409 = { statusCode: 409, code: 'flow_in_progress', message: 'Ya tienes un flujo en acción', session_id: 's-1' };
 

@@ -7,9 +7,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 import { ActiveSessionProvider, useActiveSession } from './ActiveSessionContext';
 import chatService from '../services/chatService';
+import jobsService from '../services/jobsService';
 
 vi.mock('../services/chatService', () => ({
   default: { subscribeToSessionState: vi.fn() },
+}));
+vi.mock('../services/jobsService', () => ({
+  default: { getActiveSession: vi.fn() },
 }));
 
 // localStorage controlado (la jsdom de esta versión no expone clear utilizable).
@@ -38,11 +42,12 @@ beforeEach(() => {
 });
 
 const Consumer = () => {
-  const { activeSession, startTracking, stopTracking } = useActiveSession();
+  const { activeSession, startTracking, stopTracking, syncFromServer } = useActiveSession();
   return (
     <div>
       <button onClick={() => startTracking('session_123')}>start</button>
       <button onClick={stopTracking}>stop</button>
+      <button onClick={syncFromServer}>sync</button>
       <div data-testid="session">{activeSession ? 'has-session' : 'no-session'}</div>
       <div data-testid="id">{activeSession?.sessionId || 'none'}</div>
       <div data-testid="phase">{activeSession?.phase || 'none'}</div>
@@ -166,5 +171,67 @@ describe('ActiveSessionContext', () => {
     fireEvent.click(start);
     fireEvent.click(start);
     expect(chatService.subscribeToSessionState).toHaveBeenCalledTimes(1);
+  });
+
+  it('retoma el polling al montar si la sesión restaurada esperaba la revisión del docente', () => {
+    global.localStorage.getItem.mockReturnValueOnce(
+      JSON.stringify({ sessionId: 'session_777', phase: 'awaiting_hitl' }),
+    );
+    renderProvider();
+    expect(chatService.subscribeToSessionState).toHaveBeenCalledTimes(1);
+    expect(lastSubscription.sessionId).toBe('session_777');
+  });
+
+  describe('syncFromServer (el servidor es la fuente de verdad)', () => {
+    const sincronizar = async () => {
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'sync' }));
+      });
+    };
+
+    it('adopta el flujo activo del servidor aunque localStorage esté vacío (otro navegador)', async () => {
+      jobsService.getActiveSession.mockResolvedValue({ sessionId: 's-srv', phase: 'awaiting_hitl', workflowStatus: null });
+      renderProvider();
+      await sincronizar();
+      expect(screen.getByTestId('id')).toHaveTextContent('s-srv');
+      expect(screen.getByTestId('phase')).toHaveTextContent('awaiting_hitl');
+      expect(chatService.subscribeToSessionState).toHaveBeenCalledTimes(1);
+      expect(lastSubscription.sessionId).toBe('s-srv');
+    });
+
+    it('no reinicia el polling si ya se está siguiendo esa misma sesión', async () => {
+      jobsService.getActiveSession.mockResolvedValue({ sessionId: 'session_123', phase: 'running', workflowStatus: null });
+      renderProvider();
+      fireEvent.click(screen.getByRole('button', { name: 'start' }));
+      await sincronizar();
+      expect(chatService.subscribeToSessionState).toHaveBeenCalledTimes(1);
+    });
+
+    it('limpia una sesión en curso que el servidor ya no reconoce (otro docente en el mismo equipo)', async () => {
+      global.localStorage.getItem.mockReturnValueOnce(JSON.stringify({ sessionId: 's-ajena', phase: 'running' }));
+      jobsService.getActiveSession.mockResolvedValue(null);
+      renderProvider();
+      const { stop } = lastSubscription;
+      await sincronizar();
+      expect(screen.getByTestId('session')).toHaveTextContent('no-session');
+      expect(stop).toHaveBeenCalled();
+      expect(global.localStorage.removeItem).toHaveBeenCalledWith('prisma_active_session');
+    });
+
+    it('conserva una sesión terminada (material listo para descargar)', async () => {
+      global.localStorage.getItem.mockReturnValueOnce(JSON.stringify({ sessionId: 's-lista', phase: 'completed' }));
+      jobsService.getActiveSession.mockResolvedValue(null);
+      renderProvider();
+      await sincronizar();
+      expect(screen.getByTestId('id')).toHaveTextContent('s-lista');
+    });
+
+    it('si falla la consulta (sin red) deja todo como estaba', async () => {
+      global.localStorage.getItem.mockReturnValueOnce(JSON.stringify({ sessionId: 's-1', phase: 'running' }));
+      jobsService.getActiveSession.mockRejectedValue(new Error('network'));
+      renderProvider();
+      await sincronizar();
+      expect(screen.getByTestId('id')).toHaveTextContent('s-1');
+    });
   });
 });

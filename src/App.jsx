@@ -8,6 +8,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ActiveSessionProvider } from './context/ActiveSessionContext';
 import FloatingSessionIndicator from './components/ui/FloatingSessionIndicator';
+import ActiveSessionSync from './components/ActiveSessionSync';
 import SessionToast from './components/ui/SessionToast';
 
 // Páginas
@@ -274,6 +275,7 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <ActiveSessionProvider>
+          <ActiveSessionSync />
           <AppContent />
           <FloatingSessionIndicator />
           <SessionToast />

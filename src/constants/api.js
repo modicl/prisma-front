@@ -30,6 +30,7 @@ export const JOBS_ENDPOINTS = {
   UPLOAD: `${BFF_BASE_URL}/api/jobs/upload`,
   LIST: `${BFF_BASE_URL}/api/jobs`,
   HISTORY: `${BFF_BASE_URL}/api/jobs/history`,
+  ACTIVE: `${BFF_BASE_URL}/api/jobs/active`,
   STATUS: (id) => `${BFF_BASE_URL}/api/jobs/${id}`,
   DOWNLOAD: (id) => `${BFF_BASE_URL}/api/jobs/${id}/download`,
 };

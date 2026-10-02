@@ -43,6 +43,22 @@ const jobsService = {
     }
   },
 
+  /**
+   * Flujo activo del docente según el servidor (lee su cupo en ms-docs): `{sessionId, phase, workflowStatus}` o `null`.
+   * Sirve para retomar una sesión si el docente cerró el navegador, cambió de equipo o perdió la conexión.
+   */
+  getActiveSession: async () => {
+    try {
+      const response = await docsApi.get(JOBS_ENDPOINTS.ACTIVE);
+      const data = response.data;
+      // El BFF colapsa los 4xx de los microservicios a 200 con el error en el cuerpo (gotcha 9b).
+      if (data?.statusCode >= 400) throw new Error(data.message || 'Error al consultar el flujo activo');
+      return data?.active ?? null;
+    } catch (error) {
+      throw new Error(error.response?.data?.message || error.message || 'Error al consultar el flujo activo');
+    }
+  },
+
   getHistory: async () => {
     try {
       const response = await docsApi.get(JOBS_ENDPOINTS.HISTORY);

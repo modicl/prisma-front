@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useRef, useState, useCallback, useEffect } from 'react';
 import chatService from '../services/chatService';
+import jobsService from '../services/jobsService';
 
 const ActiveSessionContext = createContext(null);
 const STORAGE_KEY = 'prisma_active_session';
@@ -76,17 +77,59 @@ export const ActiveSessionProvider = ({ children }) => {
     connectPolling(sessionId);
   }, [connectPolling]);
 
-  // Al restaurar desde localStorage: retomar el polling si estaba en running
+  // El servidor es la fuente de verdad de «¿tengo un flujo en curso?»; localStorage solo es una caché que se corrige aquí.
+  // Cubre: otro navegador o equipo, datos del navegador borrados, y otro docente que usó antes el mismo equipo.
+  const syncFromServer = useCallback(async () => {
+    let active;
+    try {
+      active = await jobsService.getActiveSession();
+    } catch {
+      return; // sin red o sesión vencida: se deja lo que haya, sin romper nada
+    }
+    if (active) {
+      if (trackedIdRef.current === active.sessionId && stopPollingRef.current) return;
+      trackedIdRef.current = active.sessionId;
+      const adopted = {
+        sessionId: active.sessionId,
+        phase: active.phase,
+        workflowStatus: active.workflowStatus ?? null,
+        currentStep: '',
+        error: null,
+      };
+      save(adopted);
+      setActiveSession(adopted);
+      connectPolling(active.sessionId);
+      return;
+    }
+    // El servidor no tiene nada activo: una sesión local «en curso» ya no existe (o era de otro docente).
+    // Una terminada se conserva: es el material listo para descargar.
+    setActiveSession((prev) => {
+      if (prev && (prev.phase === 'running' || prev.phase === 'awaiting_hitl')) {
+        if (stopPollingRef.current) {
+          stopPollingRef.current();
+          stopPollingRef.current = null;
+        }
+        cancelledRef.current = true;
+        trackedIdRef.current = null;
+        try { localStorage.removeItem(STORAGE_KEY); } catch {}
+        return null;
+      }
+      return prev;
+    });
+  }, [connectPolling]);
+
+  // Al restaurar desde localStorage: retomar el polling si el flujo seguía en curso (procesando o esperando al docente)
   useEffect(() => {
     const restored = activeSession;
-    if (restored?.phase === 'running' && restored?.sessionId && !stopPollingRef.current) {
+    const enCurso = restored?.phase === 'running' || restored?.phase === 'awaiting_hitl';
+    if (enCurso && restored?.sessionId && !stopPollingRef.current) {
       trackedIdRef.current = restored.sessionId;
       connectPolling(restored.sessionId);
     }
   }, []); // solo en mount
 
   return (
-    <ActiveSessionContext.Provider value={{ activeSession, startTracking, stopTracking }}>
+    <ActiveSessionContext.Provider value={{ activeSession, startTracking, stopTracking, syncFromServer }}>
       {children}
     </ActiveSessionContext.Provider>
   );

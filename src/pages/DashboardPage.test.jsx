@@ -19,6 +19,11 @@ vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({ user: { nombre: 'Ada' } }),
 }));
 
+let mockActive = null;
+vi.mock('../context/ActiveSessionContext', () => ({
+  useActiveSession: () => ({ activeSession: mockActive }),
+}));
+
 vi.mock('../components/layout/MainContainer', () => ({
   default: ({ children }) => <div>{children}</div>,
 }));
@@ -39,6 +44,7 @@ vi.mock('../services/adminPanelService', () => ({
 describe('DashboardPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockActive = null;
   });
 
   it('muestra el spinner mientras carga', () => {
@@ -79,5 +85,38 @@ describe('DashboardPage', () => {
     adminPanelService.getActiveAnnouncements.mockRejectedValue(new Error('sin anuncios'));
     render(<DashboardPage />);
     await waitFor(() => expect(screen.getByText(/¡Hola, Ada!/)).toBeInTheDocument());
+  });
+
+  describe('proceso en curso', () => {
+    beforeEach(() => {
+      adminPanelService.getActiveAnnouncements.mockResolvedValue([]);
+    });
+
+    it('no muestra el aviso si el docente no tiene un flujo activo', async () => {
+      render(<DashboardPage />);
+      await waitFor(() => expect(screen.getByText(/Hola, Ada/)).toBeInTheDocument());
+      expect(screen.queryByText(/Tienes un proceso en curso/i)).not.toBeInTheDocument();
+    });
+
+    it('avisa y lleva a la sesión con "Continuar" cuando el flujo está procesando', async () => {
+      mockActive = { sessionId: 's-9', phase: 'running' };
+      render(<DashboardPage />);
+      await waitFor(() => expect(screen.getByText(/Tienes un proceso en curso/i)).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: /Continuar/i }));
+      expect(mockNavigate).toHaveBeenCalledWith('/sesion/s-9');
+    });
+
+    it('indica que falta la revisión del docente cuando está esperando su decisión', async () => {
+      mockActive = { sessionId: 's-9', phase: 'awaiting_hitl' };
+      render(<DashboardPage />);
+      await waitFor(() => expect(screen.getByText(/revisión pendiente/i)).toBeInTheDocument());
+    });
+
+    it.each(['completed', 'error'])('no avisa si la sesión ya terminó (%s)', async (phase) => {
+      mockActive = { sessionId: 's-9', phase };
+      render(<DashboardPage />);
+      await waitFor(() => expect(screen.getByText(/Hola, Ada/)).toBeInTheDocument());
+      expect(screen.queryByText(/Tienes un proceso en curso/i)).not.toBeInTheDocument();
+    });
   });
 });

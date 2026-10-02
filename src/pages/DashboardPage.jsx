@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useActiveSession } from '../context/ActiveSessionContext';
 import { useNavigate } from 'react-router-dom';
 import MainContainer from '../components/layout/MainContainer';
 import { Card, Badge, Button, Alert, Spinner } from '../components/ui';
@@ -15,6 +16,8 @@ import adminPanelService from '../services/adminPanelService';
 const DashboardPage = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { activeSession } = useActiveSession();
+  const enCurso = activeSession?.phase === 'running' || activeSession?.phase === 'awaiting_hitl';
 
   const [stats, setStats] = useState(null);
   const [students, setStudents] = useState([]);
@@ -95,6 +98,21 @@ const DashboardPage = () => {
             Bienvenido a P.R.I.S.M.A. Adaptador de Contenidos para Necesidades Educativas Especiales
           </p>
         </div>
+
+        {/* Proceso en curso: permite retomar una sesión que quedó abierta */}
+        {enCurso && (
+          <Alert variant="info">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <span>
+                Tienes un proceso en curso
+                {activeSession.phase === 'awaiting_hitl' ? ': revisión pendiente de tu parte.' : '.'}
+              </span>
+              <Button variant="primary" onClick={() => navigate(`/sesion/${activeSession.sessionId}`)}>
+                Continuar
+              </Button>
+            </div>
+          </Alert>
+        )}
 
         {/* Error Alert */}
         {error && (
