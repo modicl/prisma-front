@@ -16,6 +16,12 @@ import storageUtils from '../utils/localStorage';
 
 // Mock storageUtils
 vi.mock('../utils/localStorage');
+// El redirect espera a que Amplify borre sus tokens. Se stubea para poder
+// afirmar que se llama y para que resuelva de inmediato.
+vi.mock('./cognitoAuth', () => ({
+  signOutCognito: vi.fn(() => Promise.resolve()),
+}));
+import { signOutCognito } from './cognitoAuth';
 
 describe('authSession', () => {
   beforeEach(() => {
@@ -88,21 +94,30 @@ describe('authSession', () => {
       expect(window.location.replace).not.toHaveBeenCalled();
     });
 
-    it('debe limpiar sesión y redirigir a /login', () => {
+    it('debe limpiar sesión (legacy y Cognito) y redirigir a /login', async () => {
       window.location.pathname = '/dashboard';
       redirectToLogin();
       expect(storageUtils.clearSession).toHaveBeenCalled();
-      expect(window.location.replace).toHaveBeenCalledWith('/login');
+      expect(signOutCognito).toHaveBeenCalled();
+      await vi.waitFor(() => expect(window.location.replace).toHaveBeenCalledWith('/login'));
     });
 
-    it('no debe redirigir si el redirect ya está en progreso', () => {
+    it('redirige igual si el sign-out de Cognito falla', async () => {
+      window.location.pathname = '/dashboard';
+      signOutCognito.mockRejectedValueOnce(new Error('sin red'));
+      redirectToLogin();
+      await vi.waitFor(() => expect(window.location.replace).toHaveBeenCalledWith('/login'));
+    });
+
+    it('no debe redirigir si el redirect ya está en progreso', async () => {
       window.location.pathname = '/dashboard';
       redirectToLogin();
-      expect(window.location.replace).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => expect(window.location.replace).toHaveBeenCalledTimes(1));
 
       // Segundo intento no debe redirigir
       window.location.replace.mockClear();
       redirectToLogin();
+      await Promise.resolve();
       expect(window.location.replace).not.toHaveBeenCalled();
     });
 
@@ -129,13 +144,13 @@ describe('authSession', () => {
       expect(window.location.replace).not.toHaveBeenCalled();
     });
 
-    it('debe redirigir a login para errores de sesión expirada', () => {
+    it('debe redirigir a login para errores de sesión expirada', async () => {
       resetAuthRedirectLock();
       window.location.pathname = '/protected';
       const result = handleAuthFailure({ code: 'AUTH_SESSION_EXPIRED' }, '/api/chat');
       expect(result).toBe(false);
       expect(storageUtils.clearSession).toHaveBeenCalled();
-      expect(window.location.replace).toHaveBeenCalledWith('/login');
+      await vi.waitFor(() => expect(window.location.replace).toHaveBeenCalledWith('/login'));
     });
 
     it('debe retornar false incluso después de redirigir', () => {

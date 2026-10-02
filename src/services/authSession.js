@@ -1,4 +1,5 @@
 import storageUtils from '../utils/localStorage';
+import { signOutCognito } from './cognitoAuth';
 
 const LOGIN_PATH = '/login';
 
@@ -37,11 +38,15 @@ export const redirectToLogin = () => {
 
   redirectInProgress = true;
 
-  if (window.location.pathname === LOGIN_PATH) {
-    return;
-  }
-
-  window.location.replace(LOGIN_PATH);
+  // Los tokens de Cognito viven en el storage de Amplify, no en el nuestro.
+  // Si no se borran también, /login muestra el formulario con una sesión viva
+  // y Amplify rechaza el siguiente signInWithRedirect.
+  const volverAlLogin = () => {
+    if (window.location.pathname !== LOGIN_PATH) {
+      window.location.replace(LOGIN_PATH);
+    }
+  };
+  signOutCognito().then(volverAlLogin, volverAlLogin);
 };
 
 export const handleAuthFailure = (errorResponse, requestUrl) => {

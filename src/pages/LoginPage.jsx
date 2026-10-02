@@ -8,11 +8,22 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Input, Button, Alert, Spinner } from '../components';
 import authService from '../services/authService';
-import { signInWithGoogle, signInWithMicrosoft } from '../services/cognitoAuth';
+import {
+  signInWithGoogle,
+  signInWithMicrosoft,
+  getCognitoSession,
+  signOutCognito,
+} from '../services/cognitoAuth';
 
 const LoginPage = () => {
   const navigate = useNavigate();
-  const { login, isCognitoEnabled } = useAuth();
+  const {
+    login,
+    loginFromCognito,
+    isCognitoEnabled,
+    isAuthenticated,
+    isLoading: isSessionLoading,
+  } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState({});
@@ -23,6 +34,15 @@ const LoginPage = () => {
   useEffect(() => {
     document.title = 'P.R.I.S.M.A. - Iniciar Sesión';
   }, []);
+
+  // Con sesión viva no hay nada que hacer acá. Sin esto, un 401 que limpió solo
+  // el storage legacy dejaba al usuario en /login con la sesión de Cognito
+  // intacta, y Amplify rechazaba el siguiente clic con "already a signed in user".
+  useEffect(() => {
+    if (!isSessionLoading && isAuthenticated) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isSessionLoading, isAuthenticated, navigate]);
 
   const validateForm = () => {
     const newErrors = {};
@@ -43,6 +63,20 @@ const LoginPage = () => {
     return Object.keys(newErrors).length === 0;
   };
 
+  // Amplify se niega a iniciar un login si ya tiene tokens guardados. Si esa
+  // sesión sirve, entramos con ella; si no (tokens muertos), la limpiamos y
+  // reintentamos una vez.
+  const recoverFromExistingSession = async (signIn) => {
+    const session = await getCognitoSession();
+    if (session) {
+      loginFromCognito(session.user);
+      navigate('/dashboard', { replace: true });
+      return;
+    }
+    await signOutCognito();
+    await signIn();
+  };
+
   // Redirige a Cognito -> IdP federado (Google o Microsoft). Vuelve a /auth/callback.
   const handleFederatedLogin = async (signIn, providerName) => {
     setApiError(null);
@@ -50,8 +84,17 @@ const LoginPage = () => {
     try {
       await signIn();
     } catch (error) {
+      let finalError = error;
+      if (error?.name === 'UserAlreadyAuthenticatedException') {
+        try {
+          await recoverFromExistingSession(signIn);
+          return;
+        } catch (retryError) {
+          finalError = retryError;
+        }
+      }
       setIsRedirecting(false);
-      setApiError(error.message || `No se pudo conectar con ${providerName}. Intenta nuevamente.`);
+      setApiError(finalError?.message || `No se pudo conectar con ${providerName}. Intenta nuevamente.`);
     }
   };
 

@@ -66,7 +66,7 @@ const AuthCallbackPage = () => {
       if (settled.current || attempts >= 20) {
         clearInterval(poll);
         if (!settled.current) {
-          fail('Se agotó el tiempo de espera al iniciar sesión. Volvé a intentarlo.');
+          fail('Se agotó el tiempo de espera al iniciar sesión. Vuelve a intentarlo.');
         }
       }
     }, 400);
