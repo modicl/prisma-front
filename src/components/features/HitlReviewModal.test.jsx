@@ -100,4 +100,21 @@ describe('HitlReviewModal', () => {
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Aprobar/i })).toBeInTheDocument();
   });
+
+  describe('cancelar el proceso', () => {
+    it('muestra "Cancelar proceso" solo cuando se entrega onCancel', () => {
+      const { rerender } = render(<HitlReviewModal hitlData={hitlData} onRespond={onRespond} />);
+      expect(screen.queryByRole('button', { name: /Cancelar proceso/i })).not.toBeInTheDocument();
+      rerender(<HitlReviewModal hitlData={hitlData} onRespond={onRespond} onCancel={() => {}} />);
+      expect(screen.getByRole('button', { name: /Cancelar proceso/i })).toBeInTheDocument();
+    });
+
+    it('llama a onCancel sin enviar ninguna decisión', () => {
+      const onCancel = vi.fn();
+      render(<HitlReviewModal hitlData={hitlData} onRespond={onRespond} onCancel={onCancel} />);
+      fireEvent.click(screen.getByRole('button', { name: /Cancelar proceso/i }));
+      expect(onCancel).toHaveBeenCalledTimes(1);
+      expect(onRespond).not.toHaveBeenCalled();
+    });
+  });
 });

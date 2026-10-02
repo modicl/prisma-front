@@ -53,6 +53,13 @@ const chatService = {
       });
       return response.data;
     } catch (error) {
+      // 409: el docente ya tiene un flujo activo (el servidor manda {code, message, session_id} en `detail`).
+      const detail = error.response?.data?.detail;
+      if (error.response?.status === 409 && detail && typeof detail === 'object') {
+        const conflicto = new Error(detail.message || 'Ya tienes un flujo en acción');
+        conflicto.activeSessionId = detail.session_id || null;
+        throw conflicto;
+      }
       throw new Error(error.response?.data?.message || 'Error al iniciar sesión de chat');
     }
   },

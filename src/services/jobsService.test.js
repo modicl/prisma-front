@@ -27,6 +27,23 @@ describe('jobsService', () => {
   });
 
   describe('createJob', () => {
+    const cuerpo409 = { statusCode: 409, code: 'flow_in_progress', message: 'Ya tienes un flujo en acción', session_id: 's-1' };
+
+    it('detecta "ya tienes un flujo" aunque el BFF lo devuelva con estado 200', async () => {
+      // El BFF colapsa los 4xx de los microservicios a 200 con el error en el cuerpo (gotcha 9b).
+      mockDocsApi.post.mockResolvedValueOnce({ data: cuerpo409 });
+      const err = await jobsService.createJob({}, {}, 'x').catch((e) => e);
+      expect(err.message).toBe('Ya tienes un flujo en acción');
+      expect(err.activeSessionId).toBe('s-1');
+    });
+
+    it('detecta "ya tienes un flujo" con un 409 real', async () => {
+      mockDocsApi.post.mockRejectedValueOnce({ response: { status: 409, data: cuerpo409 } });
+      const err = await jobsService.createJob({}, {}, 'x').catch((e) => e);
+      expect(err.message).toBe('Ya tienes un flujo en acción');
+      expect(err.activeSessionId).toBe('s-1');
+    });
+
     it('crea un job con archivos y prompt (multipart)', async () => {
       const mockJob = { jobId: 'job_123', status: 'processing' };
       mockDocsApi.post.mockResolvedValueOnce({ data: mockJob });

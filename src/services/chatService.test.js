@@ -33,6 +33,15 @@ describe('chatService', () => {
   });
 
   describe('startSession', () => {
+    it('muestra el mensaje del servidor cuando ya hay un flujo en acción (409)', async () => {
+      mockChatApi.post.mockRejectedValueOnce({
+        response: { status: 409, data: { detail: { code: 'flow_in_progress', message: 'Ya tienes un flujo en acción', session_id: 's-1' } } },
+      });
+      const err = await chatService.startSession(new File(['a'], 'a.pdf'), new File(['b'], 'b.docx')).catch((e) => e);
+      expect(err.message).toBe('Ya tienes un flujo en acción');
+      expect(err.activeSessionId).toBe('s-1');
+    });
+
     it('debe iniciar una sesión de chat correctamente', async () => {
       const mockSession = { session_id: 'session_123', status: 'running' };
       mockChatApi.post.mockResolvedValueOnce({ data: mockSession });

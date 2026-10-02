@@ -214,7 +214,7 @@ const SesionPage = () => {
             ))}
 
             {phase === 'awaiting_hitl' && hitlData && (
-              <HitlReviewModal hitlData={hitlData} onRespond={handleHitlRespond} />
+              <HitlReviewModal hitlData={hitlData} onRespond={handleHitlRespond} onCancel={handleCancel} />
             )}
 
             {phase === 'running' && (

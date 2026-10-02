@@ -11,7 +11,8 @@ import MarkdownView from './MarkdownView';
  *
  * @param {{
  *   hitlData: { perfil_paci: string, planificacion_adaptada: string, attempt: number, max_attempts: number },
- *   onRespond: (decision: { approved: boolean, reason?: string }) => void
+ *   onRespond: (decision: { approved: boolean, reason?: string }) => void,
+ *   onCancel?: () => void   // si se entrega, aparece «Cancelar proceso» (detiene todo el flujo)
  * }} props
  */
 const TABS = [
@@ -19,7 +20,7 @@ const TABS = [
   { id: 'planificacion', label: 'Planificación Adaptada (Agente 2)', key: 'planificacion_adaptada' },
 ];
 
-const HitlReviewModal = ({ hitlData, onRespond }) => {
+const HitlReviewModal = ({ hitlData, onRespond, onCancel }) => {
   const [activeTab, setActiveTab] = useState('analisis');
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState('');
@@ -88,6 +89,7 @@ const HitlReviewModal = ({ hitlData, onRespond }) => {
         {/* Footer fijo: decisión */}
         <div className="px-6 py-4 border-t border-stone-200 dark:border-stone-700 flex-shrink-0">
           {!rejecting ? (
+            <div className="space-y-2">
             <div className="flex gap-3">
               <button
                 onClick={handleApprove}
@@ -101,6 +103,15 @@ const HitlReviewModal = ({ hitlData, onRespond }) => {
               >
                 Rechazar
               </button>
+            </div>
+            {onCancel && (
+              <button
+                onClick={onCancel}
+                className="w-full py-2 rounded-xl text-sm font-medium text-stone-500 dark:text-stone-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-stone-50 dark:hover:bg-stone-800 transition-colors"
+              >
+                Cancelar proceso
+              </button>
+            )}
             </div>
           ) : (
             <div className="space-y-3">

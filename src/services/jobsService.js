@@ -15,6 +15,14 @@ docsApi.interceptors.request.use(async (config) => {
   return config;
 });
 
+// El docente ya tiene un flujo activo (ms-docs responde 409 con este cuerpo; el BFF puede entregarlo con estado 200).
+const esFlujoEnAccion = (data) => data?.code === 'flow_in_progress';
+const conflictoFlujo = (data) => {
+  const err = new Error(data.message || 'Ya tienes un flujo en acción');
+  err.activeSessionId = data.session_id ?? null;
+  return err;
+};
+
 const jobsService = {
   createJob: async (paciFile, planningFile, prompt) => {
     try {
@@ -26,8 +34,11 @@ const jobsService = {
       const response = await docsApi.post(JOBS_ENDPOINTS.UPLOAD, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
+      if (esFlujoEnAccion(response.data)) throw conflictoFlujo(response.data);
       return response.data;
     } catch (error) {
+      if (error.activeSessionId !== undefined) throw error;
+      if (esFlujoEnAccion(error.response?.data)) throw conflictoFlujo(error.response.data);
       throw new Error(error.response?.data?.message || 'Error al crear la sesión');
     }
   },
